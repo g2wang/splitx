@@ -1,0 +1,4 @@
+/target
+/test/results/
+/test/verify/
+/test/log*
