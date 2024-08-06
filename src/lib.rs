@@ -128,15 +128,6 @@ where
     }
 }
 
-fn count_lines<P>(file_path: P) -> io::Result<u64>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(&file_path)?;
-    let reader = io::BufReader::new(file);
-    Ok(reader.lines().count() as u64)
-}
-
 fn get_file_size<P>(file_path: P) -> io::Result<u64>
 where
     P: AsRef<Path>,
@@ -145,16 +136,49 @@ where
     Ok(metadata.len())
 }
 
-fn estimate_chunk_size<P>(file_path: P, max_file_size_bytes: u64) -> io::Result<u64>
+fn estimate_chunk_size<P>(
+    file_path: P,
+    max_file_size_bytes: u64,
+    num_header_lines: u8,
+) -> io::Result<(u64, Vec<String>)>
 where
     P: AsRef<Path>,
 {
-    let num_lines = count_lines(&file_path)?;
-    let file_size = get_file_size(&file_path)?;
+    let file_disk_size = get_file_size(&file_path)?;
+    let mut file_memory_size = 0;
+    let mut header = Vec::with_capacity(num_header_lines as usize);
+    let mut header_memory_size = 0;
+    let file = File::open(&file_path)?;
+    let reader = io::BufReader::new(file);
+    let mut num_lines: u64 = 0;
+    let mut header_done = false;
+
+    for line in reader.lines() {
+        num_lines += 1;
+        let line = line? + "\n";
+        let line_size = line.as_bytes().len();
+        file_memory_size += line_size;
+        if !header_done {
+            if num_lines <= num_header_lines as u64 {
+                header.push(line.trim_end_matches('\n').to_string());
+                header_memory_size += line_size;
+            } else {
+                header_done = true;
+            }
+        }
+    }
+
+    let dm_size_ratio = file_disk_size as f64 / file_memory_size as f64;
+    let header_disk_size = (header_memory_size as f64 * dm_size_ratio) as u64;
+
+    let max_body_size_bytes = max_file_size_bytes - header_disk_size;
+    let num_body_lines = num_lines - num_header_lines as u64;
+    let body_disk_size = file_disk_size - header_disk_size;
+
     let chunk_size = (LEEWAY_FACTOR as f64
-        * (num_lines as f64 / file_size as f64 * max_file_size_bytes as f64))
+        * (num_body_lines as f64 / body_disk_size as f64 * max_body_size_bytes as f64))
         as u64;
-    Ok(chunk_size)
+    Ok((chunk_size, header))
 }
 
 /// the public function of the lib
@@ -172,7 +196,8 @@ where
         let _ = fs::create_dir_all(o_path);
     }
 
-    let mut chunk_size = estimate_chunk_size(file_path.clone(), max_file_size_bytes)?;
+    let (mut chunk_size, header) =
+        estimate_chunk_size(file_path.clone(), max_file_size_bytes, num_header_lines)?;
     let file = File::open(file_path.clone())?;
     let reader = io::BufReader::new(file);
 
@@ -181,24 +206,15 @@ where
 
     let mut file_index = 0;
     let mut buffer = Vec::new();
-    let mut header = Vec::with_capacity(num_header_lines as usize);
     let mut remainder: Option<Vec<String>>;
 
     let mut chunk_line_counter: u64 = 0;
-    let mut header_done = false;
 
     loop {
         match lines.next() {
             Some(line) => {
                 chunk_line_counter += 1;
                 linex = line?;
-                if !header_done {
-                    if chunk_line_counter > num_header_lines as u64 {
-                        header_done = true;
-                    } else {
-                        header.push(linex.clone());
-                    }
-                }
                 buffer.push(linex);
                 if chunk_line_counter > chunk_size {
                     (remainder, file_index, chunk_size) = write_buffer_to_file(
