@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 const LEEWAY_FACTOR: f32 = 0.8;
+const NEW_LINE_BYTES: usize = "\n".as_bytes().len();
 
 fn format_os_str(os_str: Option<&OsStr>) -> Option<String> {
     os_str.map(|value| value.to_string_lossy().into_owned())
@@ -62,9 +63,10 @@ fn write_buffer_to_file<P>(
     file: P,
     mut file_index: u32,
     max_size: u64,
+    max_chunk_memory_bytes: u64,
     header: &[String],
     is_end_of_file: bool,
-) -> io::Result<(Option<Vec<String>>, u32, u64)>
+) -> io::Result<(Option<Vec<String>>, u32)>
 where
     P: AsRef<Path> + std::fmt::Display,
 {
@@ -73,9 +75,8 @@ where
     let mut remainder: Option<Vec<String>> = None;
     let mut first_part = &buffer[..];
     let len = buffer.len();
-    let mut chunk_size = len as u64;
     let header_len = header.len();
-    let mut remainder_len = 0;
+    let mut remainder_bytes = 0;
     while size > max_size {
         let split_point = (first_part.len() as f32 * LEEWAY_FACTOR) as usize;
         first_part = &buffer[..split_point];
@@ -85,22 +86,22 @@ where
                 r.extend_from_slice(&header[..]);
             }
             r.extend_from_slice(&buffer[split_point..]);
-            remainder_len = r.len();
+            remainder_bytes = get_slice_bytes(&r[..]);
             remainder = Some(r);
         }
         size = write_lines_to_file(first_part, &f)?;
-        chunk_size = split_point as u64;
     }
     file_index += 1;
 
-    if (remainder_len as u64 > chunk_size) || is_end_of_file {
+    if (remainder_bytes as u64 > max_chunk_memory_bytes) || is_end_of_file {
         if let Some(r) = remainder {
-            (remainder, file_index, chunk_size) = write_buffer_to_file(
+            (remainder, file_index) = write_buffer_to_file(
                 &r[..],
                 output_dir,
                 file,
                 file_index,
                 max_size,
+                max_chunk_memory_bytes,
                 &header[..],
                 is_end_of_file,
             )?;
@@ -113,19 +114,7 @@ where
         remainder = Some(r);
     }
 
-    if let Some(r) = &remainder {
-        remainder_len = r.len();
-    }
-
-    if chunk_size > remainder_len as u64 {
-        let mut next_chunk_size = (chunk_size - remainder_len as u64) as u64;
-        if next_chunk_size < 1 {
-            next_chunk_size = 1;
-        }
-        Ok((remainder, file_index, next_chunk_size))
-    } else {
-        Ok((remainder, file_index, 1u64))
-    }
+    Ok((remainder, file_index))
 }
 
 fn get_file_size<P>(file_path: P) -> io::Result<u64>
@@ -155,12 +144,12 @@ where
 
     for line in reader.lines() {
         num_lines += 1;
-        let line = line? + "\n";
-        let line_size = line.as_bytes().len();
+        let line = line?;
+        let line_size = line.as_bytes().len() + NEW_LINE_BYTES;
         file_memory_size += line_size;
         if !header_done {
             if num_lines <= num_header_lines as u64 {
-                header.push(line.trim_end_matches('\n').to_string());
+                header.push(line);
                 header_memory_size += line_size;
             } else {
                 header_done = true;
@@ -171,14 +160,19 @@ where
     let dm_size_ratio = file_disk_size as f64 / file_memory_size as f64;
     let header_disk_size = (header_memory_size as f64 * dm_size_ratio) as u64;
 
-    let max_body_size_bytes = max_file_size_bytes - header_disk_size;
-    let num_body_lines = num_lines - num_header_lines as u64;
-    let body_disk_size = file_disk_size - header_disk_size;
+    let max_body_disk_size_bytes = max_file_size_bytes - header_disk_size;
+    let max_body_memory_size_bytes = (max_body_disk_size_bytes as f64 / dm_size_ratio) as u64;
 
-    let chunk_size = (LEEWAY_FACTOR as f64
-        * (num_body_lines as f64 / body_disk_size as f64 * max_body_size_bytes as f64))
-        as u64;
-    Ok((chunk_size, header))
+    Ok((max_body_memory_size_bytes, header))
+}
+
+fn get_slice_bytes(s: &[String]) -> u64 {
+    let mut slice_bytes: u64 = 0;
+    for line in s {
+        slice_bytes += line.as_bytes().len() as u64;
+        slice_bytes += NEW_LINE_BYTES as u64;
+    }
+    slice_bytes
 }
 
 /// the public function of the lib
@@ -196,7 +190,7 @@ where
         let _ = fs::create_dir_all(o_path);
     }
 
-    let (mut chunk_size, header) =
+    let (max_chunk_bytes, header) =
         estimate_chunk_size(file_path.clone(), max_file_size_bytes, num_header_lines)?;
     let file = File::open(file_path.clone())?;
     let reader = io::BufReader::new(file);
@@ -208,29 +202,31 @@ where
     let mut buffer = Vec::new();
     let mut remainder: Option<Vec<String>>;
 
-    let mut chunk_line_counter: u64 = 0;
+    let mut chunk_bytes: u64 = 0;
 
     loop {
         match lines.next() {
             Some(line) => {
-                chunk_line_counter += 1;
                 linex = line?;
+                chunk_bytes += linex.as_bytes().len() as u64;
                 buffer.push(linex);
-                if chunk_line_counter > chunk_size {
-                    (remainder, file_index, chunk_size) = write_buffer_to_file(
+                if chunk_bytes > max_chunk_bytes {
+                    (remainder, file_index) = write_buffer_to_file(
                         &buffer[..],
                         output_dir.clone(),
                         file_path.clone(),
                         file_index,
                         max_file_size_bytes,
+                        max_chunk_bytes,
                         &header[..],
                         false,
                     )?;
                     buffer.clear();
+                    chunk_bytes = 0;
                     if let Some(r) = &remainder {
                         buffer.extend_from_slice(&r[..]);
+                        chunk_bytes += get_slice_bytes(&r[..]);
                     }
-                    chunk_line_counter = 0;
                 }
             }
             None => {
@@ -241,6 +237,7 @@ where
                         file_path,
                         file_index,
                         max_file_size_bytes,
+                        max_chunk_bytes,
                         &header[..],
                         true,
                     );
