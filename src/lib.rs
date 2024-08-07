@@ -211,7 +211,7 @@ where
         match lines.next() {
             Some(line) => {
                 linex = line?;
-                let line_num_bytes = linex.as_bytes().len() as u64;
+                let line_num_bytes = linex.as_bytes().len() as u64 + NEW_LINE_BYTES as u64;
                 if chunk_bytes + line_num_bytes > max_chunk_bytes {
                     (remainder, file_index) = write_buffer_to_file(
                         &buffer[..],
