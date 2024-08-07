@@ -163,7 +163,10 @@ where
     let max_body_disk_size_bytes = max_file_size_bytes - header_disk_size;
     let max_body_memory_size_bytes = (max_body_disk_size_bytes as f64 / dm_size_ratio) as u64;
 
-    Ok((max_body_memory_size_bytes, header))
+    Ok((
+        max_body_memory_size_bytes + header_memory_size as u64,
+        header,
+    ))
 }
 
 fn get_slice_bytes(s: &[String]) -> u64 {
@@ -208,9 +211,8 @@ where
         match lines.next() {
             Some(line) => {
                 linex = line?;
-                chunk_bytes += linex.as_bytes().len() as u64;
-                buffer.push(linex);
-                if chunk_bytes > max_chunk_bytes {
+                let line_num_bytes = linex.as_bytes().len() as u64;
+                if chunk_bytes + line_num_bytes > max_chunk_bytes {
                     (remainder, file_index) = write_buffer_to_file(
                         &buffer[..],
                         output_dir.clone(),
@@ -222,11 +224,15 @@ where
                         false,
                     )?;
                     buffer.clear();
-                    chunk_bytes = 0;
+                    chunk_bytes = line_num_bytes;
                     if let Some(r) = &remainder {
                         buffer.extend_from_slice(&r[..]);
                         chunk_bytes += get_slice_bytes(&r[..]);
                     }
+                    buffer.push(linex);
+                } else {
+                    chunk_bytes += line_num_bytes;
+                    buffer.push(linex);
                 }
             }
             None => {
