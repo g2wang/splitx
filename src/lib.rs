@@ -77,6 +77,10 @@ where
     let len = buffer.len();
     let header_len = header.len();
     let mut remainder_bytes = 0;
+
+    // The following while loop should never be executed based on tests so far.
+    // It serves as a safeguard against unseen situations where the calculated
+    // memroy size does not match the disk size.
     while size > max_size {
         let split_point = (first_part.len() as f32 * LEEWAY_FACTOR) as usize;
         first_part = &buffer[..split_point];
@@ -93,6 +97,9 @@ where
     }
     file_index += 1;
 
+    // The following (remainder_bytes as u64 > max_chunk_memory_bytes) condition should never be
+    // true based on tests so far. It serves as a safeguard against unseen situations where the
+    // calculated memroy size does not match the disk size.
     if (remainder_bytes as u64 > max_chunk_memory_bytes) || is_end_of_file {
         if let Some(r) = remainder {
             (remainder, file_index) = write_buffer_to_file(
