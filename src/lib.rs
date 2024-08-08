@@ -143,7 +143,6 @@ where
     let file_disk_size = get_file_size(&file_path)?;
     let mut file_memory_size = 0;
     let mut header = Vec::with_capacity(num_header_lines as usize);
-    let mut header_memory_size = 0;
     let file = File::open(&file_path)?;
     let reader = io::BufReader::new(file);
     let mut num_lines: u64 = 0;
@@ -157,21 +156,16 @@ where
         if !header_done {
             if num_lines <= num_header_lines as u64 {
                 header.push(line);
-                header_memory_size += line_size;
             } else {
                 header_done = true;
             }
         }
     }
 
-    let dm_size_ratio = file_disk_size as f64 / file_memory_size as f64;
-    let header_disk_size = (header_memory_size as f64 * dm_size_ratio) as u64;
-
-    let max_body_disk_size_bytes = max_file_size_bytes - header_disk_size;
-    let max_body_memory_size_bytes = (max_body_disk_size_bytes as f64 / dm_size_ratio) as u64;
-
+    let memory_over_disk_size_ratio = file_memory_size as f64 / file_disk_size as f64;
+    // memory_over_disk_size_ratio should be 1, but not guaranteed
     Ok((
-        max_body_memory_size_bytes + header_memory_size as u64,
+        (max_file_size_bytes as f64 * memory_over_disk_size_ratio) as u64,
         header,
     ))
 }
