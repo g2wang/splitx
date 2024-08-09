@@ -6,7 +6,6 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
 
-const LEEWAY_FACTOR: f32 = 0.8;
 const NEW_LINE_BYTES: usize = "\n".as_bytes().len();
 
 fn format_os_str(os_str: Option<&OsStr>) -> Option<String> {
@@ -82,7 +81,8 @@ where
     // It serves as a safeguard against unseen situations where the calculated
     // memroy size does not match the disk size.
     while size > max_size {
-        let split_point = (first_part.len() as f32 * LEEWAY_FACTOR) as usize;
+        println!("wasted write (should not happen) at file_index: {file_index}; size: {size}; max_size: {max_size}");
+        let split_point = (first_part.len() as f32 * 0.8) as usize;
         first_part = &buffer[..split_point];
         if len > split_point {
             let mut r: Vec<String> = Vec::with_capacity(len - split_point + header_len);
