@@ -179,7 +179,14 @@ fn get_slice_bytes(s: &[String]) -> u64 {
     slice_bytes
 }
 
-/// the public function of the lib
+/// Splits a text file into pieces with the size of each piece below a specified maximum number of bytes.
+///
+/// # Arguments
+///
+/// * file_path - the path to the file to be split.
+/// * max_file_size_bytes - the maximum size of each piece of the file in bytes after split.
+/// * num_header_lines - how many lines are the file's header. If no header lines, use 0. Header lines will be kept in each of the pieces.
+/// * output_dir - where to wite the pieces of the files.
 pub fn split<P>(
     file_path: P,
     max_file_size_bytes: u64,
@@ -262,9 +269,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let f = "./test/test.csv";
-        let _ = split(f, 1000, 1, "./test/results");
-        assert_eq!(1, 1);
+    fn test_split() {
+        let input_file = "./test/test.csv";
+        let output_dir = "./test/results";
+        let num_header_lines = 1;
+        let max_file_size_bytes = 4000;
+        let _ = split(
+            input_file,
+            max_file_size_bytes,
+            num_header_lines,
+            output_dir,
+        );
+        assert_eq!(1, 1); // todo: validate the split results
     }
 }

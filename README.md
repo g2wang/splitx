@@ -5,7 +5,7 @@
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: https://github.com/loyd/elfo/blob/master/LICENSE
 
-splitx is a tiny rust library for splitting a text file into pieces which the size of each piece below a specified maximum in bytes.
+splitx is a tiny rust library for splitting a text file into pieces with the size of each piece below a specified maximum number of bytes on disk.
 
 **Note: It's not published to crates.io yet.**
 
