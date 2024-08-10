@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cargo run > test/log
+cargo test > test/log
 
 cat test/results/* > test/verify/_all
 diff test/test.csv test/verify/_all > test/verify/diff
@@ -16,5 +16,5 @@ grep -v '"Longitude (x)","Latitude (y)"' test/verify/_all >>  test/verify/combin
 echo "diff between combined and the original:"
 diff test/verify/combined.csv test/test.csv
 
-# echo "wasted write count:"
-# grep -c 'wasted' test/log
+echo "wasted write count:"
+grep -c 'wasted' test/log
