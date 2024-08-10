@@ -1,6 +1,9 @@
 [package]
 name = "splitx"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-
-[dependencies]
+repository = "https://github.com/g2wang/splitx"
+authors = ["Guangde Wang <g2wang@yahoo.com>"]
+license = "MIT"
+readme = "README.md"
+description = "splitting a text file into pieces with the size of each piece below a specified maximum number of bytes on disk"

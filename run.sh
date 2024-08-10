@@ -5,8 +5,10 @@ cargo test > test/log
 cat test/results/* > test/verify/_all
 diff test/test.csv test/verify/_all > test/verify/diff
 echo "diff added lines count:"
+# this grep command works on MacOs; feel free to adapt for other OS's
 grep -c '^\d\+a\d\+$' test/verify/diff
 echo "diff deleted lines count:"
+# this grep command works on MacOs; feel free to adapt for other OS's
 grep -c '^\d\+d\d\+$' test/verify/diff
 echo "last split file:"
 ls -l test/results/ | tail -1
