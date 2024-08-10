@@ -6,6 +6,91 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
 
+/// Splits a text file into pieces with the size of each piece below a specified maximum number of bytes.
+///
+/// # Arguments
+///
+/// * file_path - the path to the file to be split.
+/// * max_file_size_bytes - the maximum size of each piece of the file in bytes after split.
+/// * num_header_lines - how many lines are the file's header. If no header lines, use 0. Header lines will be kept in each of the pieces.
+/// * output_dir - where to wite the pieces of the files.
+pub fn split<P>(
+    file_path: P,
+    max_file_size_bytes: u64,
+    num_header_lines: u8,
+    output_dir: P,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: AsRef<Path> + std::fmt::Display + Clone,
+{
+    let o_path = output_dir.as_ref();
+    if !o_path.exists() {
+        let _ = fs::create_dir_all(o_path);
+    }
+
+    let (max_chunk_bytes, header) =
+        estimate_chunk_size(file_path.clone(), max_file_size_bytes, num_header_lines)?;
+    let file = File::open(file_path.clone())?;
+    let reader = io::BufReader::new(file);
+
+    let mut lines = reader.lines();
+    let mut linex: String;
+
+    let mut file_index = 0;
+    let mut buffer = Vec::new();
+    let mut remainder: Option<Vec<String>>;
+
+    let mut chunk_bytes: u64 = 0;
+
+    loop {
+        match lines.next() {
+            Some(line) => {
+                linex = line?;
+                let line_num_bytes = linex.as_bytes().len() as u64 + NEW_LINE_BYTES as u64;
+                if chunk_bytes + line_num_bytes > max_chunk_bytes {
+                    (remainder, file_index) = write_buffer_to_file(
+                        &buffer[..],
+                        output_dir.clone(),
+                        file_path.clone(),
+                        file_index,
+                        max_file_size_bytes,
+                        max_chunk_bytes,
+                        &header[..],
+                        false,
+                    )?;
+                    buffer.clear();
+                    chunk_bytes = line_num_bytes;
+                    if let Some(r) = &remainder {
+                        buffer.extend_from_slice(&r[..]);
+                        chunk_bytes += get_slice_bytes(&r[..]);
+                    }
+                    buffer.push(linex);
+                } else {
+                    chunk_bytes += line_num_bytes;
+                    buffer.push(linex);
+                }
+            }
+            None => {
+                if !buffer.is_empty() {
+                    let _ = write_buffer_to_file(
+                        &buffer[..],
+                        output_dir,
+                        file_path,
+                        file_index,
+                        max_file_size_bytes,
+                        max_chunk_bytes,
+                        &header[..],
+                        true,
+                    );
+                }
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 const NEW_LINE_BYTES: usize = "\n".as_bytes().len();
 
 fn format_os_str(os_str: Option<&OsStr>) -> Option<String> {
@@ -177,91 +262,6 @@ fn get_slice_bytes(s: &[String]) -> u64 {
         slice_bytes += NEW_LINE_BYTES as u64;
     }
     slice_bytes
-}
-
-/// Splits a text file into pieces with the size of each piece below a specified maximum number of bytes.
-///
-/// # Arguments
-///
-/// * file_path - the path to the file to be split.
-/// * max_file_size_bytes - the maximum size of each piece of the file in bytes after split.
-/// * num_header_lines - how many lines are the file's header. If no header lines, use 0. Header lines will be kept in each of the pieces.
-/// * output_dir - where to wite the pieces of the files.
-pub fn split<P>(
-    file_path: P,
-    max_file_size_bytes: u64,
-    num_header_lines: u8,
-    output_dir: P,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    P: AsRef<Path> + std::fmt::Display + Clone,
-{
-    let o_path = output_dir.as_ref();
-    if !o_path.exists() {
-        let _ = fs::create_dir_all(o_path);
-    }
-
-    let (max_chunk_bytes, header) =
-        estimate_chunk_size(file_path.clone(), max_file_size_bytes, num_header_lines)?;
-    let file = File::open(file_path.clone())?;
-    let reader = io::BufReader::new(file);
-
-    let mut lines = reader.lines();
-    let mut linex: String;
-
-    let mut file_index = 0;
-    let mut buffer = Vec::new();
-    let mut remainder: Option<Vec<String>>;
-
-    let mut chunk_bytes: u64 = 0;
-
-    loop {
-        match lines.next() {
-            Some(line) => {
-                linex = line?;
-                let line_num_bytes = linex.as_bytes().len() as u64 + NEW_LINE_BYTES as u64;
-                if chunk_bytes + line_num_bytes > max_chunk_bytes {
-                    (remainder, file_index) = write_buffer_to_file(
-                        &buffer[..],
-                        output_dir.clone(),
-                        file_path.clone(),
-                        file_index,
-                        max_file_size_bytes,
-                        max_chunk_bytes,
-                        &header[..],
-                        false,
-                    )?;
-                    buffer.clear();
-                    chunk_bytes = line_num_bytes;
-                    if let Some(r) = &remainder {
-                        buffer.extend_from_slice(&r[..]);
-                        chunk_bytes += get_slice_bytes(&r[..]);
-                    }
-                    buffer.push(linex);
-                } else {
-                    chunk_bytes += line_num_bytes;
-                    buffer.push(linex);
-                }
-            }
-            None => {
-                if !buffer.is_empty() {
-                    let _ = write_buffer_to_file(
-                        &buffer[..],
-                        output_dir,
-                        file_path,
-                        file_index,
-                        max_file_size_bytes,
-                        max_chunk_bytes,
-                        &header[..],
-                        true,
-                    );
-                }
-                break;
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
