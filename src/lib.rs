@@ -10,10 +10,10 @@ use std::path::PathBuf;
 ///
 /// # Arguments
 ///
-/// * file_path - the path to the file to be split.
-/// * max_file_size_bytes - the maximum size of each piece of the file in bytes after split.
+/// * file_path - the path of the file to be split.
+/// * max_file_size_bytes - the maximum size of each piece of the file in bytes after splitting.
 /// * num_header_lines - how many lines are the file's header. If no header lines, use 0. Header lines will be kept in each of the pieces.
-/// * output_dir - where to wite the pieces of the files.
+/// * output_dir - where to write the pieces of the file.
 pub fn split<P>(
     file_path: P,
     max_file_size_bytes: u64,
